@@ -15,7 +15,7 @@ setuptools.setup(
         'scipy>=1.1',
         'pandas>=0.23',
         'matplotlib>=2.2',
-        'networkx>=2.1'
+        'networkx>=2.1',
         'boto3>=1.7',
         'python-dateutil>=2.7'],
     classifiers=(
