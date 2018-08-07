@@ -1,5 +1,5 @@
-import camera_helper_functions
-import datetime_helper_functions
+import cvutilities.camera_utilities
+import cvutilities.datetime_utilities
 import boto3
 import networkx as nx
 import numpy as np
@@ -8,7 +8,7 @@ import json
 
 def generate_s3_datetime_strings(
     datetime):
-    datetime_native_utc_naive = datetime_helper_functions.convert_to_native_utc_naive(datetime)
+    datetime_native_utc_naive = cvutilities.datetime_utilities.convert_to_native_utc_naive(datetime)
     date_string = datetime_native_utc_naive.strftime('%Y-%m-%d')
     time_string = datetime_native_utc_naive.strftime('%H-%M-%S')
     return date_string, time_string
@@ -111,15 +111,15 @@ def calculate_pose_3d(
         openpose_data_single_person_a['keypoint_confidence_scores'],
         openpose_data_single_person_b['keypoint_positions'],
         openpose_data_single_person_b['keypoint_confidence_scores'])
-    image_points_a_distortion_removed = camera_helper_functions.undistort_points(
+    image_points_a_distortion_removed = cvutilities.camera_utilities.undistort_points(
         image_points_a,
         camera_matrix,
         distortion_coefficients)
-    image_points_b_distortion_removed = camera_helper_functions.undistort_points(
+    image_points_b_distortion_removed = cvutilities.camera_utilities.undistort_points(
         image_points_b,
         camera_matrix,
         distortion_coefficients)
-    object_points = camera_helper_functions.reconstruct_object_points_from_camera_poses(
+    object_points = cvutilities.camera_utilities.reconstruct_object_points_from_camera_poses(
         image_points_a_distortion_removed,
         image_points_b_distortion_removed,
         camera_matrix,
@@ -127,13 +127,13 @@ def calculate_pose_3d(
         translation_vector_a,
         rotation_vector_b,
         translation_vector_b)
-    image_points_a_reconstructed = camera_helper_functions.project_points(
+    image_points_a_reconstructed = cvutilities.camera_utilities.project_points(
         object_points,
         rotation_vector_a,
         translation_vector_a,
         camera_matrix,
         distortion_coefficients)
-    image_points_b_reconstructed = camera_helper_functions.project_points(
+    image_points_b_reconstructed = cvutilities.camera_utilities.project_points(
         object_points,
         rotation_vector_b,
         translation_vector_b,
@@ -287,7 +287,7 @@ def draw_2d_pose_data_one_person(
     confidence_scores = openpose_data_single_person['keypoint_confidence_scores']
     valid_points = all_points[confidence_scores > 0.0]
     centroid = np.mean(valid_points, 0)
-    camera_helper_functions.draw_2d_image_points(valid_points)
+    cvutilities.camera_utilities.draw_2d_image_points(valid_points)
     plt.text(centroid[0], centroid[1], pose_tag)
 
 def plot_2d_pose_data_one_person(
@@ -297,7 +297,7 @@ def plot_2d_pose_data_one_person(
     draw_2d_pose_data_one_person(
         openpose_data_single_person,
         pose_tag)
-    camera_helper_functions.format_2d_image_plot(image_size)
+    cvutilities.camera_utilities.format_2d_image_plot(image_size)
     plt.show()
 
 def draw_2d_pose_data_one_camera(
@@ -318,7 +318,7 @@ def plot_2d_pose_data_one_camera(
     draw_2d_pose_data_one_camera(
         openpose_data_single_camera,
         pose_tags_single_camera)
-    camera_helper_functions.format_2d_image_plot(image_size)
+    cvutilities.camera_utilities.format_2d_image_plot(image_size)
     plt.show()
 
 def plot_2d_pose_data_multiple_cameras(
@@ -341,7 +341,7 @@ def draw_3d_pose_data_topdown_single_person(
     pose_tag = None):
     valid_points = pose_data_single_person[np.isfinite(pose_data_single_person[:, 0])]
     centroid = np.mean(valid_points[:, :2], 0)
-    camera_helper_functions.draw_3d_object_points_topdown(valid_points)
+    cvutilities.camera_utilities.draw_3d_object_points_topdown(valid_points)
     if pose_tag is not None:
         plt.text(centroid[0], centroid[1], pose_tag)
 
@@ -352,7 +352,7 @@ def plot_3d_pose_data_topdown_single_person(
     draw_3d_pose_data_topdown_single_person(
         pose_data_single_person,
         pose_tag)
-    camera_helper_functions.format_3d_topdown_plot(room_corners)
+    cvutilities.camera_utilities.format_3d_topdown_plot(room_corners)
     plt.show()
 
 def draw_3d_pose_data_topdown_multiple_people(
@@ -373,7 +373,7 @@ def plot_3d_pose_data_topdown_multiple_people(
     draw_3d_pose_data_topdown_multiple_people(
         pose_data_multiple_people,
         pose_tags)
-    camera_helper_functions.format_3d_topdown_plot(room_corners)
+    cvutilities.camera_utilities.format_3d_topdown_plot(room_corners)
     plt.show()
 
 def generate_match_pose_tags(
