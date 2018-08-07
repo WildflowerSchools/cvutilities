@@ -2,23 +2,23 @@
 
 Miscellaneous helper functions for fetching and processing OpenPose data and camera calibration data
 
-* `cvutilities.camera_utilities` contains:
+`cvutilities.camera_utilities` contains:
 
-** Functions which load camera calibration data from local JSON files
+* Functions which load camera calibration data from local JSON files
 
-** Wrappers which reshape inputs, feed them through different combinations of various OpenCV functions, and regularize the outputs
+* Wrappers which reshape inputs, feed them through different combinations of various OpenCV functions, and regularize the outputs
 
-** Functions which support basic visualization of image and object points
+* Functions which support basic visualization of image and object points
 
-* `cvutilities.openpose_utilities` contains:
+`cvutilities.openpose_utilities` contains:
 
-** Functions which load 2D OpenPose output data from Wildflower S3 directories
+* Functions which load 2D OpenPose output data from Wildflower S3 directories
 
-** Functions which perform very basic 3D pose reconstruction from multi-camera 2D OpenPose data
+* Functions which perform very basic 3D pose reconstruction from multi-camera 2D OpenPose data
 
-** Functions which support basic visualization of 2D and 3D pose data
+* Functions which support basic visualization of 2D and 3D pose data
 
-* cvutilities.datetime_utilities contains functions to convert various datetime formats (native Python, numpy, pandas; timezone-naive or timezone-aware; timezones in dateutil format or pytz format) into known timezone-naive formats in UTC 
+`cvutilities.datetime_utilities` contains functions to convert various datetime formats (native Python, numpy, pandas; timezone-naive or timezone-aware; timezones in dateutil format or pytz format) into known timezone-naive formats in UTC 
 
 All of this functionality ultimately needs to be reorganized and grouped with similar functionality from other packages/repos.
 
