@@ -88,7 +88,12 @@ body_part_connectors = [
 
 # Class to hold the data for a single 2D pose
 class Pose2D:
-    def __init__(self, keypoints, confidence_scores, valid_keypoints):
+    def __init__(
+        self,
+        keypoints,
+        confidence_scores,
+        valid_keypoints,
+        tag = None):
         keypoints = np.asarray(keypoints)
         confidence_scores = np.asarray(confidence_scores)
         valid_keypoints = np.asarray(valid_keypoints, dtype = np.bool_)
@@ -104,6 +109,7 @@ class Pose2D:
         self.keypoints = keypoints
         self.confidence_scores = confidence_scores
         self.valid_keypoints = valid_keypoints
+        self.tag = tag
 
     # Pull the pose data from a dictionary with the same structure as the
     # correponding OpenPose output JSON string
@@ -124,13 +130,19 @@ class Pose2D:
         json_data = json.loads(json_string)
         return cls.from_openpose_person_json_data(json_data)
 
+    # Set tag (we provide a function for this stay consistent with the other
+    # classes; users of these classes should never have to call the base
+    # constructor)
+    def set_tag(
+        self,
+        tag):
+        self.tag = tag
+
     # Draw the pose onto a chart with the dimensions of the origin image. We
     # separate this from the plotting function below because we might want to
     # draw several poses or other elements before formatting and showing the
     # chart.
-    def draw(
-        self,
-        pose_tag = None):
+    def draw(self):
         all_points = self.keypoints
         valid_keypoints = self.valid_keypoints
         plottable_points = all_points[valid_keypoints]
@@ -145,7 +157,8 @@ class Pose2D:
                     [all_points[body_part_from_index,1],all_points[body_part_to_index, 1]],
                     'k-',
                     alpha = 0.2)
-        plt.text(centroid[0], centroid[1], pose_tag)
+        if self.tag is not None:
+            plt.text(centroid[0], centroid[1], self.tag)
 
     # Plot a pose onto a chart with the dimensions of the origin image. Calls
     # the drawing function above, adds formating, and shows the plot.
@@ -157,37 +170,39 @@ class Pose2D:
         cvutilities.camera_utilities.format_2d_image_plot(image_size)
         plt.show()
 
-# Class to hold the data from a collection of 2D poses corresponding to a single
-# camera image
-class Poses2DCamera:
-    def __init__(self, poses):
+# Class to hold the data from a collection of 2D poses. Internal structure is a
+# list of lists of 2DPose objects (multiple cameras, multiple poses per camera)
+class Poses2D:
+    def __init__(
+        self,
+        poses):
         self.poses = poses
-        self.num_poses = len(poses)
 
-    # Pull the pose data from a dictionary with the same structure as the
-    # correponding OpenPose output JSON file
+    # Pull the pose data for a single camera from a dictionary with the same
+    # structure as the correponding OpenPose output JSON file
     @classmethod
     def from_openpose_output_json_data(cls, json_data):
         people_json_data = json_data[openpose_people_list_name]
-        poses = [Pose2D.from_openpose_person_json_data(person_json_data) for person_json_data in people_json_data]
+        poses = [[Pose2D.from_openpose_person_json_data(person_json_data) for person_json_data in people_json_data]]
         return cls(poses)
 
-    # Pull the pose data from a string containing the contents of an OpenPose
-    # output JSON file
+    # Pull the pose data for a single camera from a string containing the
+    # contents of an OpenPose output JSON file
     @classmethod
     def from_openpose_output_json_string(cls, json_string):
         json_data = json.loads(json_string)
         return cls.from_openpose_output_json_data(json_data)
 
-    # Pull the pose data from a local OpenPose output JSON file
+    # Pull the pose data for a single camera from a local OpenPose output JSON
+    # file
     @classmethod
     def from_openpose_output_json_file(cls, json_file_path):
         with open(json_file_path) as json_file:
             json_data = json.load(json_file)
         return cls.from_openpose_output_json_data(json_data)
 
-    # Pull the pose data from an OpenPose output JSON file stored in a specified
-    # location on S3
+    # Pull the pose data for a single camera from an OpenPose output JSON file
+    # stored on S3 and specified by S3 object name
     @classmethod
     def from_openpose_output_s3_object(cls, s3_bucket_name, s3_object_name):
         s3_object = boto3.resource('s3').Object(s3_bucket_name, s3_object_name)
@@ -195,8 +210,8 @@ class Poses2DCamera:
         json_data = json.loads(s3_object_content)
         return cls.from_openpose_output_json_data(json_data)
 
-    # Pull the pose data from an OpenPose output JSON file stored on S3 and
-    # specified by classroom name, camera name, and date-time
+    # Pull the pose data for a single camera from an OpenPose output JSON file
+    # stored on S3 and specified by classroom name, camera name, and date-time
     @classmethod
     def from_openpose_output_wildflower_s3(
         cls,
@@ -210,37 +225,9 @@ class Poses2DCamera:
             datetime)
         return cls.from_openpose_output_s3_object(s3_bucket_name, s3_object_name)
 
-    # Draw the poses onto a chart with the dimensions of the origin image. We
-    # separate this from the plotting function below because we might want to
-    # draw other elements before formatting and showing the chart
-    def draw(
-        self,
-        pose_tags = None):
-        num_poses = self.num_poses
-        if pose_tags is None:
-            pose_tags = range(num_poses)
-        for pose_index in range(num_poses):
-            self.poses[pose_index].draw(pose_tags[pose_index])
-
-    # Plot the poses onto a chart with the dimensions of the origin image. Calls
-    # the drawing function above, adds formating, and shows the plot
-    def plot(
-        self,
-        pose_tags = None,
-        image_size=[1296, 972]):
-        self.draw(pose_tags)
-        cvutilities.camera_utilities.format_2d_image_plot(image_size)
-        plt.show()
-
-# Class to hold the data from a collection of 2D poses from multiple cameras at
-# a single timestep
-class Poses2DTimestep:
-    def __init__(self, cameras):
-        self.cameras = cameras
-        self.num_cameras = len(cameras)
-
-    # Pull the pose data from a set of OpenPose output JSON files stored on S3
-    # and specified by classroom name, a list of camera names, and date-time
+    # Pull the pose data for a set of cameras at a single timestep from a set of
+    # OpenPose output JSON files stored on S3 and specified by classroom name, a
+    # list of camera names, and date-time
     @classmethod
     def from_openpose_timestep_wildflower_s3(
         cls,
@@ -248,33 +235,74 @@ class Poses2DTimestep:
         camera_names,
         datetime):
         s3_bucket_name = classroom_data_wildflower_s3_bucket_name
-        cameras = []
+        poses = []
         for camera_name in camera_names:
             s3_object_name = generate_pose_2d_wildflower_s3_object_name(
                 classroom_name,
                 camera_name,
                 datetime)
-            cameras.append(Poses2DCamera.from_openpose_output_s3_object(s3_bucket_name, s3_object_name))
-        return cls(cameras)
+            camera = Poses2D.from_openpose_output_s3_object(s3_bucket_name, s3_object_name)
+            poses.append(camera.poses[0])
+        return cls(poses)
+
+    # Set pose tags
+    def set_tags(
+        self,
+        tag_lists):
+        num_tag_lists = len(tag_lists)
+        if num_tag_lists != self.num_cameras():
+            raise ValueError('Number of tag lists does not match number of cameras')
+        for tag_list_index in range(num_tag_lists):
+            num_tags = len(tag_lists[tag_list_index])
+            if num_tags != self.num_poses()[tag_list_index]:
+                raise ValueError('Length of tag list does not match number of poses')
+            for tag_index in range(num_tags):
+                self.poses[tag_list_index][tag_index].tag = tag_lists[tag_list_index][tag_index]
+
+    # Return number of cameras
+    def num_cameras(self):
+        return len(self.poses)
+
+    # Return number of poses for each camera
+    def num_poses(self):
+        return [len(camera) for camera in self.poses]
+
+    # Return keypoints
+    def keypoints(self):
+        return [[pose.keypoints for pose in camera] for camera in self.poses]
+
+    # Return confidence_scores
+    def confidence_scores(self):
+        return [[pose.confidence_scores for pose in camera] for camera in self.poses]
+
+    # Return valid keypoints
+    def valid_keypoints(self):
+        return [[pose.valid_keypoints for pose in camera] for camera in self.poses]
+
+    # Return pose tags
+    def tags(self):
+        return [[pose.tag for pose in camera] for camera in self.poses]
 
     # Plot the poses onto a set of charts, one for each source camera view.
     def plot(
         self,
-        pose_tags = None,
         image_size=[1296, 972]):
-        num_cameras = self.num_cameras
+        num_cameras = self.num_cameras()
         for camera_index in range(num_cameras):
-            if pose_tags is None:
-                pose_tags_single_camera = None
-            else:
-                pose_tags_single_camera = pose_tags[camera_index]
-            self.cameras[camera_index].plot(
-                pose_tags_single_camera,
-                image_size)
+            num_poses = self.num_poses()[camera_index]
+            for pose_index in range(num_poses):
+                self.poses[camera_index][pose_index].draw()
+            cvutilities.camera_utilities.format_2d_image_plot(image_size)
+            plt.show()
 
 # Class to hold the data for a single 3D pose
 class Pose3D:
-    def __init__(self, keypoints, valid_keypoints, projection_error=None):
+    def __init__(
+        self,
+        keypoints,
+        valid_keypoints,
+        projection_error = None,
+        tag = None):
         keypoints = np.asarray(keypoints)
         valid_keypoints = np.asarray(valid_keypoints, dtype = np.bool_)
         projection_error = np.asarray(projection_error)
@@ -290,6 +318,7 @@ class Pose3D:
         self.keypoints = keypoints
         self.valid_keypoints = valid_keypoints
         self.projection_error = projection_error
+        self.tag = tag
 
     # Calculate a 3D pose by triangulating between two 2D poses from two
     # different cameras
@@ -357,28 +386,35 @@ class Pose3D:
             projection_error = max(
                 projection_error_a,
                 projection_error_b)
-        return cls(keypoints, common_keypoint_positions_mask, projection_error)
+        if pose_2d_a.tag is None and pose_2d_b.tag is None:
+            tag = None
+        elif pose_2d_a.tag == pose_2d_b.tag:
+            tag = pose_2d_a.tag
+        else:
+            tag = '{}/{}'.format(pose_2d_a.tag, pose_2d_b.tag)
+        return cls(
+            keypoints,
+            common_keypoint_positions_mask,
+            projection_error,
+            tag)
 
     # Draw the pose onto a chart representing a top-down view of the room. We
     # separate this from the plotting function below because we might want to
     # draw several poses or other elements before formatting and showing the
     # chart
-    def draw_topdown(
-        self,
-        pose_tag = None):
+    def draw_topdown(self):
         plottable_points = self.keypoints[self.valid_keypoints]
         centroid = np.mean(plottable_points[:, :2], 0)
         cvutilities.camera_utilities.draw_3d_object_points_topdown(plottable_points)
-        if pose_tag is not None:
-            plt.text(centroid[0], centroid[1], pose_tag)
+        if self.tag is not None:
+            plt.text(centroid[0], centroid[1], self.tag)
 
     # Plot a pose onto a chart representing a top-down view of the room. Calls
     # the drawing function above, adds formating, and shows the plot
     def plot_topdown(
         self,
-        pose_tag = None,
         room_corners = None):
-        self.draw_pose_3d_topdown(pose_tag)
+        self.draw_pose_3d_topdown()
         cvutilities.camera_utilities.format_3d_topdown_plot(room_corners)
         plt.show()
 
@@ -402,19 +438,17 @@ class Poses3D:
         poses_2d,
         cameras):
         pose_graph = nx.Graph()
-        num_cameras_source_images = poses_2d.num_cameras
-        num_2d_poses_source_images = np.zeros(num_cameras_source_images, dtype=int)
+        num_cameras_source_images = poses_2d.num_cameras()
+        num_2d_poses_source_images = poses_2d.num_poses()
         for camera_index_a in range(num_cameras_source_images - 1):
             for camera_index_b in range(camera_index_a + 1, num_cameras_source_images):
-                num_poses_a = poses_2d.cameras[camera_index_a].num_poses
-                num_poses_b = poses_2d.cameras[camera_index_b].num_poses
-                num_2d_poses_source_images[camera_index_a] = num_poses_a
-                num_2d_poses_source_images[camera_index_b] = num_poses_b
+                num_poses_a = poses_2d.num_poses()[camera_index_a]
+                num_poses_b = poses_2d.num_poses()[camera_index_b]
                 for pose_index_a in range(num_poses_a):
                     for pose_index_b in range(num_poses_b):
                         pose_3d = Pose3D.from_poses_2d(
-                            poses_2d.cameras[camera_index_a].poses[pose_index_a],
-                            poses_2d.cameras[camera_index_b].poses[pose_index_b],
+                            poses_2d.poses[camera_index_a][pose_index_a],
+                            poses_2d.poses[camera_index_b][pose_index_b],
                             cameras[camera_index_a]['rotation_vector'],
                             cameras[camera_index_a]['translation_vector'],
                             cameras[camera_index_b]['rotation_vector'],
@@ -458,25 +492,28 @@ class Poses3D:
     def projection_errors(self):
         return np.array([edge[2]['pose'].projection_error for edge in list(self.pose_graph.edges.data())])
 
+    # Return the tags for all of the 3D poses in the collection.
+    def tags(self):
+        return [edge[2]['pose'].tag for edge in list(self.pose_graph.edges.data())]
+
     # Draw the graph representing all of the 3D poses in the collection (2D
     # poses as nodes, 3D poses as edges)
     def draw_graph(self):
         nx.draw(self.pose_graph, with_labels=True, font_weight='bold')
 
-    # Scan through all of the 3D poses in a collection and pull out a set of
-    # best matches, one for each person in the room
-    def extract_matched_poses(
+    # Starting with a collection of 3D poses representing all possible matches,
+    # for each camera pair, pull out the best match for each 2D pose across that
+    # pair, with the contraint that (1) If pose A is the best match for pose B
+    # then pose B must be the best match for pose A, and (2) The reprojection
+    # error has to be below a threshold
+    def extract_likely_matches_from_all_matches(
         self,
         projection_error_threshold = 15.0):
-        # First, for each camera pair, we pull out the best match for each 2D
-        # pose across that pair, with the contraint that (1) If pose A is the
-        # best match for pose B then pose B must be the best match for pose A,
-        # and (2) The reprojection error has to be below a threshold. For now,
-        # we initialize a new empty graph and copy selected edges into it. We
-        # should really do this either by creating a copy of the original graph
-        # and deleting the edges we don't want or by tracking pointers back to
-        # the original graph
-        pruned_graph = nx.Graph()
+        # For now, we initialize a new empty graph and copy selected edges into
+        # it. We should really do this either by creating a copy of the original
+        # graph and deleting the edges we don't want or by tracking pointers
+        # back to the original graph
+        likely_matches_graph = nx.Graph()
         for camera_index_a in range(self.num_cameras_source_images - 1):
             for camera_index_b in range(camera_index_a + 1, self.num_cameras_source_images):
                 num_poses_a = self.num_2d_poses_source_images[camera_index_a]
@@ -487,7 +524,10 @@ class Poses3D:
                 projection_errors = np.full((num_poses_a, num_poses_b), np.nan)
                 for pose_index_a in range(num_poses_a):
                     for pose_index_b in range(num_poses_b):
-                        projection_errors[pose_index_a, pose_index_b] = self.pose_graph[(camera_index_a, pose_index_a)][(camera_index_b, pose_index_b)]['pose'].projection_error
+                        if self.pose_graph.has_edge(
+                            (camera_index_a, pose_index_a),
+                            (camera_index_b, pose_index_b)):
+                            projection_errors[pose_index_a, pose_index_b] = self.pose_graph[(camera_index_a, pose_index_a)][(camera_index_b, pose_index_b)]['pose'].projection_error
                 # Apply our matching rule to the array of projection errors.
                 for pose_index_a in range(num_poses_a):
                     for pose_index_b in range(num_poses_b):
@@ -497,56 +537,64 @@ class Poses3D:
                             not np.all(np.isnan(projection_errors[:, pose_index_b])) and
                             np.nanargmin(projection_errors[:, pose_index_b]) == pose_index_a and
                             projection_errors[pose_index_a, pose_index_b] < projection_error_threshold):
-                            pruned_graph.add_edge(
+                            likely_matches_graph.add_edge(
                                 (camera_index_a, pose_index_a),
                                 (camera_index_b, pose_index_b),
                                 pose=self.pose_graph[(camera_index_a, pose_index_a)][(camera_index_b, pose_index_b)]['pose'])
-        # Second, for each connected subgraph (which now represents a set of
-        # poses connected across camera pairs that ought to be the same person),
-        # we extract the match with the lowest reprojection error (we could
-        # average instead). For now, we make a copy of each subgraph of the
-        # pruned graph, select the best edge from each subgraph, and copy that
-        # best edge into a new graph. We should really do this either by
-        # deleting all edges from the pruned graph other than the best one for
-        # each subgraph or by tracking pointers back to the pruned graph
-        matched_poses_graph = nx.Graph()
-        subgraphs_list = [pruned_graph.subgraph(component).copy() for component in nx.connected_components(pruned_graph)]
+        likely_matches = self.__class__(
+            likely_matches_graph,
+            self.num_cameras_source_images,
+            self.num_2d_poses_source_images)
+        return likely_matches
+
+    # Starting with a collection of 3D poses representing likely matches, for
+    # each connected subgraph (which now represents a set of poses connected
+    # across camera pairs that ought to be the same person), we extract the
+    # match with the lowest reprojection error (we could average instead).
+    def extract_best_matches_from_likely_matches(
+        self):
+        # For now, we make a copy of each subgraph of the likely matches, select
+        # the best edge from each subgraph, and copy that best edge into a new
+        # graph. We should really do this either by deleting all edges from the
+        # pruned graph other than the best one for each subgraph or by tracking
+        # pointers back to the original graph
+        best_matches_graph = nx.Graph()
+        subgraphs_list = [self.pose_graph.subgraph(component).copy() for component in nx.connected_components(self.pose_graph)]
         for subgraph_index in range(len(subgraphs_list)):
             if nx.number_of_edges(subgraphs_list[subgraph_index]) > 0:
                 best_edge = sorted(subgraphs_list[subgraph_index].edges.data(), key = lambda x: x[2]['pose'].projection_error)[0]
-                matched_poses_graph.add_edge(best_edge[0], best_edge[1], pose = best_edge[2]['pose'])
-        matched_poses = self.__class__(
-            matched_poses_graph,
+                best_matches_graph.add_edge(best_edge[0], best_edge[1], pose = best_edge[2]['pose'])
+        best_matches = self.__class__(
+            best_matches_graph,
             self.num_cameras_source_images,
             self.num_2d_poses_source_images)
-        return matched_poses
+        return best_matches
+
+    # Starting with a collection of 3D poses representing all possible matches,
+    # scan through all of the 3D poses and pull out a set of best matches, one
+    # for each person in the room (combines the two methods above)
+    def extract_matched_poses(
+        self,
+        projection_error_threshold = 15.0):
+        likely_matches = self.extract_likely_matches_from_all_matches(projection_error_threshold)
+        best_matches = likely_matches.extract_best_matches_from_likely_matches()
+        return best_matches
 
     # Draw the poses onto a chart representing a top-down view of the room. We
     # separate this from the plotting function below because we might want to
     # draw other elements before formatting and showing the chart
-    def draw_topdown(
-        self,
-        pose_tags_2d = None):
+    def draw_topdown(self):
         num_poses = len(self.poses())
         pose_indices = self.pose_indices()
-        if pose_tags_2d is None:
-            pose_tags_3d = range(num_poses)
-        else:
-            pose_tags_3d = []
-            for match_index in range(pose_indices.shape[0]):
-                pose_tags_3d.append('{},{}'.format(
-                    pose_tags_2d[pose_indices[match_index, 0, 0]][pose_indices[match_index, 0, 1]],
-                    pose_tags_2d[pose_indices[match_index, 1, 0]][pose_indices[match_index, 1, 1]]))
         for pose_index in range(num_poses):
-            self.poses()[pose_index].draw_topdown(pose_tags_3d[pose_index])
+            self.poses()[pose_index].draw_topdown()
 
     # Plot the poses onto a chart representing a top-down view of the room.
     # Calls the drawing function above, adds formating, and shows the plot
     def plot_topdown(
         self,
-        pose_tags_2d = None,
         room_corners = None):
-        self.draw_topdown(pose_tags_2d)
+        self.draw_topdown()
         cvutilities.camera_utilities.format_3d_topdown_plot(room_corners)
         plt.show()
 
