@@ -398,6 +398,27 @@ class Pose3D:
             projection_error,
             tag)
 
+    # Given a set of camera calibration parameters, project this 3D pose into
+    # the camera coordinate system to produce a 2D pose
+    def to_pose_2d(
+        self,
+        camera):
+        keypoints_2d = cvutilities.camera_utilities.project_points(
+            self.keypoints,
+            camera['rotation_vector'],
+            camera['translation_vector'],
+            camera['camera_matrix'],
+            camera['distortion_coefficients'])
+        valid_keypoints_2d =  self.valid_keypoints
+        confidence_scores_2d = np.repeat(np.nan, num_body_parts)
+        tag_2d = self.tag
+        pose_2d = Pose2D(
+            keypoints_2d,
+            confidence_scores_2d,
+            valid_keypoints_2d,
+            tag_2d)
+        return pose_2d
+
     # Draw the pose onto a chart representing a top-down view of the room. We
     # separate this from the plotting function below because we might want to
     # draw several poses or other elements before formatting and showing the
@@ -425,10 +446,12 @@ class Poses3D:
         self,
         pose_graph,
         num_cameras_source_images,
-        num_2d_poses_source_images):
+        num_2d_poses_source_images,
+        source_cameras = None):
         self.pose_graph = pose_graph
         self.num_cameras_source_images = num_cameras_source_images
         self.num_2d_poses_source_images = num_2d_poses_source_images
+        self.source_cameras = source_cameras
 
     # Calculate all possible 3D poses at a single time step (from every pair of
     # 2D poses across every pair of cameras)
@@ -459,7 +482,7 @@ class Poses3D:
                             (camera_index_a, pose_index_a),
                             (camera_index_b, pose_index_b),
                             pose=pose_3d)
-        return cls(pose_graph, num_cameras_source_images, num_2d_poses_source_images)
+        return cls(pose_graph, num_cameras_source_images, num_2d_poses_source_images, cameras)
 
     # Return the number of 3D poses (edges) in the collection
     def num_3d_poses(self):
@@ -495,6 +518,23 @@ class Poses3D:
     # Return the tags for all of the 3D poses in the collection.
     def tags(self):
         return [edge[2]['pose'].tag for edge in list(self.pose_graph.edges.data())]
+
+    # Using the camera calibration parameters from the original source images,
+    # project this collection of 3D poses back into the coordinate system for
+    # each camera to produce a collection of 2D poses
+    def to_poses_2d(self):
+        if self.source_cameras is None:
+            raise ValueError('Source camera calibration data not specified')
+        num_3d_poses = self.num_3d_poses()
+        cameras=[]
+        for camera_index in range(self.num_cameras_source_images):
+            poses = []
+            if num_3d_poses > 0:
+                for pose_index_3d in range(num_3d_poses):
+                    pose_2d = self.poses()[pose_index_3d].to_pose_2d(self.source_cameras[camera_index])
+                    poses.append(pose_2d)
+            cameras.append(poses)
+        return Poses2D(cameras)
 
     # Draw the graph representing all of the 3D poses in the collection (2D
     # poses as nodes, 3D poses as edges)
@@ -544,7 +584,8 @@ class Poses3D:
         likely_matches = self.__class__(
             likely_matches_graph,
             self.num_cameras_source_images,
-            self.num_2d_poses_source_images)
+            self.num_2d_poses_source_images,
+            self.source_cameras)
         return likely_matches
 
     # Starting with a collection of 3D poses representing likely matches, for
@@ -567,7 +608,8 @@ class Poses3D:
         best_matches = self.__class__(
             best_matches_graph,
             self.num_cameras_source_images,
-            self.num_2d_poses_source_images)
+            self.num_2d_poses_source_images,
+            self.source_cameras)
         return best_matches
 
     # Starting with a collection of 3D poses representing all possible matches,
