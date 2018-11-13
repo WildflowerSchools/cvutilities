@@ -155,6 +155,21 @@ class Pose2D:
             json_data,
             timestamp)
 
+    # Pull the pose data from an array
+    @classmethod
+    def from_pose_data_array(
+        cls,
+        pose_data_array,
+        timestamp = None):
+        keypoints = pose_data_array[:, :2]
+        confidence_scores = pose_data_array[:, 2]
+        valid_keypoints = np.logical_not(confidence_scores == 0.0)
+        return cls(
+            keypoints,
+            confidence_scores,
+            valid_keypoints,
+            timestamp=timestamp)
+
     # Set tag (we provide a function for this to stay consistent with the other
     # classes and with the princple that users of these classes should never
     # have to call the base constructor)
@@ -328,6 +343,27 @@ class Poses2D:
         return cls(
             pose_2d_list_list,
             source_images)
+
+    # Pull the pose data for multiple cameras from a dataframe row
+    @classmethod
+    def from_dataframe_row(
+        cls,
+        dataframe_row,
+        camera_names):
+        timestamp = np.datetime64(dataframe_row.name)
+        pose_2d_list_list = []
+        for camera_name in camera_names:
+            pose_2d_list = []
+            pose_data_arrays = dataframe_row[camera_name]['poses']
+            num_pose_data_arrays = pose_data_arrays.shape[0]
+            for pose_data_array_index in range(num_pose_data_arrays):
+                pose_data_array = pose_data_arrays[pose_data_array_index]
+                pose_2d = Pose2D.from_pose_data_array(
+                    pose_data_array,
+                    timestamp=timestamp)
+                pose_2d_list.append(pose_2d)
+            pose_2d_list_list.append(pose_2d_list)
+        return cls(pose_2d_list_list)
 
     # Set pose tags
     def set_tags(
@@ -657,6 +693,40 @@ class Poses3D:
                 pose_3d_list.append(pose_3d)
             pose_3d_list_list.append(pose_3d_list)
         return cls(pose_3d_list_list)
+
+    # Extract a 3D poses objects from a 3D pose graph object
+    @classmethod
+    def from_pose_3d_graph(
+        cls,
+        pose_3d_graph):
+        return cls(
+            pose_3d_list_list = [[edge[2]['pose'] for edge in list(pose_3d_graph.pose_graph.edges.data())]],
+            num_cameras_source_images = pose_3d_graph.num_cameras_source_images,
+            num_2d_poses_source_images = pose_3d_graph.num_2d_poses_source_images,
+            source_cameras = pose_3d_graph.source_cameras,
+            source_images = pose_3d_graph.source_images)
+
+    # Extract a 3D poses object from a 2D poses object using the methods below
+    @classmethod
+    def from_poses_2d(
+        cls,
+        poses_2d,
+        cameras):
+        pose_3d_graph_all = Pose3DGraph.from_poses_2d_timestep(
+            poses_2d,
+            cameras)
+        pose_3d_graph_matched = pose_3d_graph_all.extract_matched_poses()
+        return cls.from_pose_3d_graph(pose_3d_graph_matched)
+
+    # Remove empty 3D poses
+    def remove_empty_poses(self):
+        for pose_3d_list_index in range(len(self.pose_3d_list_list)):
+            pose_3d_list = self.pose_3d_list_list[pose_3d_list_index]
+            reverse_sorted_pose_3d_indices = sorted(range(len(pose_3d_list)), reverse = True)
+            for pose_3d_index in reverse_sorted_pose_3d_indices:
+                pose_3d = pose_3d_list[pose_3d_index]
+                if np.all(np.logical_not(pose_3d.valid_keypoints)):
+                    del self.pose_3d_list_list[pose_3d_list_index][pose_3d_index]
 
     # Return the number of 3D poses in each list
     def num_3d_poses(self):
@@ -1174,6 +1244,10 @@ class Pose3DDistribution:
         else:
             if current_timestamp is not None:
                 next_timestamp = current_timestamp + delta_t*time_unit
+        # print('current_timestamp: {}. next_timestamp: {}. delta_t: {}. '.format(
+        #     current_timestamp,
+        #     next_timestamp,
+        #     delta_t))
         keypoint_linear_gaussian_model = keypoint_model.linear_gaussian_model(delta_t)
         next_keypoint_distributions = []
         for body_part_index in range(num_body_parts):
@@ -1784,6 +1858,7 @@ class Pose3DTracks:
     def update(
         self,
         pose_3d_observations):
+        pose_3d_observations.remove_empty_poses()
         if pose_3d_observations.total_num_3d_poses() > 0:
             if len(pose_3d_observations.pose_3d_list_list) != 1:
                 raise ValueError('Observations must be a one-dimensional object')
@@ -1858,7 +1933,7 @@ def rms_projection_error(
     image_points_reconstructed = image_points_reconstructed.reshape((-1,2))
     if image_points.shape != image_points_reconstructed.shape:
         raise ValueError('Sets of image points do not appear to be the same shape')
-    rms_error = np.sqrt(np.sum(np.square(image_points_reconstructed - image_points))/image_points.shape[0])
+    rms_error = np.linalg.norm(image_points_reconstructed - image_points)/np.sqrt(image_points.shape[0])
     return rms_error
 
 # For two sets of pose keypoints, extract the intersection of their valid
