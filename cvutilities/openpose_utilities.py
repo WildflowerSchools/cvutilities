@@ -1,5 +1,7 @@
 import cvutilities.camera_utilities
 import cvutilities.datetime_utilities
+from suppose import suppose_pb2
+from suppose import proto
 import smc_kalman
 import boto3
 import networkx as nx # We use NetworkX graph structures to hold the 3D pose data
@@ -8,6 +10,8 @@ import pandas as pd
 import scipy.optimize
 import matplotlib.pyplot as plt
 import json
+import datetime
+import itertools
 
 # For now, the Wildflower-specific S3 functionality is intermingled with the more
 # general S3 functionality. We should probably separate these at some point. For
@@ -169,6 +173,10 @@ class Pose2D:
             confidence_scores,
             valid_keypoints,
             timestamp=timestamp)
+
+    @classmethod
+    def from_pose2d_protobuf(cls, pose2d, timestamp=None):
+        return cls.from_pose_data_array(proto.pose2d_to_array(pose2d), timestamp=timestamp)
 
     # Set tag (we provide a function for this to stay consistent with the other
     # classes and with the princple that users of these classes should never
@@ -364,6 +372,23 @@ class Poses2D:
                 pose_2d_list.append(pose_2d)
             pose_2d_list_list.append(pose_2d_list)
         return cls(pose_2d_list_list)
+
+    @classmethod
+    def from_frames_protobuf(cls, frames):
+        timestamps = set()
+        pose_2d_list_list = []
+        for camera, frame in frames.items():
+            timestamp = np.datetime64(datetime.datetime.fromtimestamp(frame.timestamp))
+            timestamps.add(timestamp)
+            if len(timestamps) != 1:
+                raise ValueError("Timestamps from cameras are not the same")
+            pose_2d_list = []
+            for pose in frame.poses:
+                pose_2d = Pose2D.from_pose2d_protobuf(pose, timestamp=timestamp)
+                pose_2d_list.append(pose_2d)
+            pose_2d_list_list.append(pose_2d_list)
+        return cls(pose_2d_list_list)
+
 
     # Set pose tags
     def set_tags(
@@ -624,7 +649,22 @@ class Pose3D:
             timestamp_2d)
         return pose_2d
 
-    # Draw the 3D pose onto a chart representing a top-down view of the room. We
+    def to_protobuf(self):
+        """ TODO: split up this class, a tracked 3d pose w/ std versus a 3d-reconstructed w/ reprojection error"""
+        pose = suppose_pb2.Pose3D(error=self.projection_error)
+        for pt, std in zip(self.keypoints, self.keypoint_std_devs):
+            keypoint = pose.keypoints.add()
+            keypoint.point.x = pt[0]
+            keypoint.point.y = pt[1]
+            keypoint.point.z = pt[2]
+            keypoint.std.x = std[0]
+            keypoint.std.y = std[1]
+            keypoint.std.z = std[2]
+        return pose
+
+
+
+# Draw the 3D pose onto a chart representing a top-down view of the room. We
     # separate this from the plotting function below because we might want to
     # draw several poses or other elements before formatting and showing the
     # chart
@@ -815,10 +855,24 @@ class Poses3D:
                     for pose_3d_index in range(len(self.pose_3d_list_list[pose_3d_list_index])):
                         pose_2d = self.pose_3d_list_list[pose_3d_list_index][pose_3d_index].to_pose_2d(self.source_cameras[camera_index])
                         if pose_2d.tag is None:
-                            pose_2d.set_tag(pose_index_3d)
+                            pose_2d.set_tag(pose_index_3d)  ## FIXME: should be pose_3d_index
                         poses.append(pose_2d)
             cameras.append(poses)
         return Poses2D(cameras, self.source_images)
+
+    def to_protobuf(self):
+        frame = suppose_pb2.Frame3D(timestamp=-1)
+        for pose in itertools.chain(*self.pose_3d_list_list):
+            pose_pb = pose.to_protobuf()
+            p = frame.poses.add()
+            p.CopyFrom(pose_pb)
+            ts = np.asscalar(pose.timestamp).timestamp()
+            if frame.timestamp != -1:
+                if ts != frame.timestamp:
+                    raise ValueError("Pose3d.to_protobuf only supports constructing a frame of poses from one timestep")
+            else:
+                frame.timestamp = ts
+        return frame
 
     # Plot the lists of poses onto charts representing a top-down view of the
     # room, one chart per list

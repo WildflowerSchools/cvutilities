@@ -32,3 +32,5 @@ print(matched_3d_poses.projection_errors())
 
 print('\nMatch indices:')
 print(matched_3d_poses.pose_indices())
+
+matched_3d_poses.plot_topdown()
